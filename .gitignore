@@ -1,2 +1,6 @@
-*.env
-/output
+__pycache__/
+.vscode/
+*.pyc
+.env
+.DS_Store
+output/
