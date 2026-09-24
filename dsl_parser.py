@@ -198,59 +198,6 @@ class DSLParser:
         }
 
 
-# ─────────────────────────────────────────────────────────────
-# Test & Demo
-# ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     parser = DSLParser()
-
-    # Test 1: Pure DSL
-    print("=" * 60)
-    print("TEST 1: Pure DSL Commands")
-    print("=" * 60)
-    test1 = """
-    INSERT screw_1 20mm hole_A
-    INSERT screw_2 20mm hole_B
-    ROTATE assembly 90 Z
-    DUPLICATE bolt 4
-    """
-    result = parser.parse(test1)
-    print(json.dumps(result, indent=2))
-
-    # Test 2: With RULEAI flag
-    print("\n" + "=" * 60)
-    print("TEST 2: With RULEAI Flag")
-    print("=" * 60)
-    test2 = """
-    //RULEAI
-    ALIGN base frame
-    FASTEN panel base SCREW
-    OFFSET motor 10 5 0
-    """
-    result = parser.parse(test2)
-    print(json.dumps(result, indent=2))
-
-    # Test 3: ONLY-RULEB (fails on natural language)
-    print("\n" + "=" * 60)
-    print("TEST 3: ONLY-RULEB Flag (Natural Language - Should Fail)")
-    print("=" * 60)
-    test3 = """
-    //ONLY-RULEB
-    put the screw into the hole
-    """
-    result = parser.parse(test3)
-    print(json.dumps(result, indent=2))
-
-    # Test 4: Mixed valid/invalid (partial parse)
-    print("\n" + "=" * 60)
-    print("TEST 4: Partial Parse (50% coverage)")
-    print("=" * 60)
-    test4 = """
-    INSERT fastener 10mm slot_A
-    this is random text that wont parse
-    ROTATE part 45 X
-    another line that means nothing
-    """
-    result = parser.parse(test4)
-    print(json.dumps(result, indent=2))

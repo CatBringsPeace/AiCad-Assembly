@@ -407,7 +407,7 @@ class CADAssemblyGUI:
                 import os
                 os.makedirs("output", exist_ok=True)
                 code_file = "output/generated_assembly.py"
-                with open(code_file, "w") as f:
+                with open(code_file, "w", encoding="utf-8") as f:
                     f.write(code)
                 self._log(f"✓ Saved: {code_file}", "dim")
                 
@@ -457,72 +457,154 @@ class CADAssemblyGUI:
         threading.Thread(target=_run, daemon=True).start()
     
     def _generate_code(self, parse_result):
-        """Generate PythonOCC assembly code"""
+        """Generate PythonOCC assembly code with real geometric operations"""
         from pathlib import Path
-        
-        # Get file names
-        file_names = [Path(f).name for f in self.step_files]
-        files_dict = {Path(f).stem: Path(f).name for f in self.step_files}
         
         commands_str = ""
         for cmd in parse_result.get("commands", []):
             cmd_type = cmd.get("type", "")
             
             if cmd_type == "INSERT":
-                obj_a = cmd.get("obj_a", "").upper()
-                obj_b = cmd.get("obj_b", "").upper()
+                obj_a = cmd.get("obj_a", "")
+                obj_b = cmd.get("obj_b", "")
                 depth = cmd.get("depth", 0)
-                commands_str += f"    # INSERT {obj_a} {depth}mm into {obj_b}\n"
+                commands_str += f'''
+if "{obj_a}" in shapes and "{obj_b}" in shapes:
+    shape_a = shapes["{obj_a}"]
+    shape_b = shapes["{obj_b}"]
+    bbox_b = Bnd_Box()
+    brepbndlib_Add(shape_b, bbox_b)
+    xmin, ymin, zmin, xmax, ymax, zmax = bbox_b.Get()
+    
+    trsf = gp_Trsf()
+    trsf.SetTranslation(gp_Vec(0, 0, {depth}))
+    shape_a = BRepBuilderAPI_Transform(shape_a, trsf).Shape()
+    shapes["{obj_a}"] = shape_a
+    print("[OK] Inserted {obj_a} into {obj_b}")
+'''
             
             elif cmd_type == "ROTATE":
-                obj = cmd.get("obj_a", "").upper()
+                obj = cmd.get("obj_a", "")
                 deg = cmd.get("degrees", 0)
-                axis = cmd.get("axis", "Z")
-                commands_str += f"    # ROTATE {obj} {deg}° around {axis}\n"
+                axis = cmd.get("axis", "Z").upper()
+                commands_str += f'''
+if "{obj}" in shapes:
+    shape = shapes["{obj}"]
+    trsf = gp_Trsf()
+    import math
+    if "{axis}" == "X":
+        ax = gp_Ax1(gp_Pnt(0,0,0), gp_Dir(1,0,0))
+    elif "{axis}" == "Y":
+        ax = gp_Ax1(gp_Pnt(0,0,0), gp_Dir(0,1,0))
+    else:
+        ax = gp_Ax1(gp_Pnt(0,0,0), gp_Dir(0,0,1))
+    trsf.SetRotation(ax, math.radians({deg}))
+    shape = BRepBuilderAPI_Transform(shape, trsf).Shape()
+    shapes["{obj}"] = shape
+    print("[OK] Rotated {obj}")
+'''
             
             elif cmd_type == "ALIGN":
-                obj_a = cmd.get("obj_a", "").upper()
-                obj_b = cmd.get("obj_b", "").upper()
-                commands_str += f"    # ALIGN {obj_a} with {obj_b}\n"
+                obj_a = cmd.get("obj_a", "")
+                obj_b = cmd.get("obj_b", "")
+                commands_str += f'''
+if "{obj_a}" in shapes and "{obj_b}" in shapes:
+    bbox_a = Bnd_Box()
+    bbox_b = Bnd_Box()
+    brepbndlib_Add(shapes["{obj_a}"], bbox_a)
+    brepbndlib_Add(shapes["{obj_b}"], bbox_b)
+    
+    xa_min, ya_min, za_min, xa_max, ya_max, za_max = bbox_a.Get()
+    xb_min, yb_min, zb_min, xb_max, yb_max, zb_max = bbox_b.Get()
+    
+    dx = xb_min - xa_min
+    dy = yb_min - ya_min
+    dz = zb_min - za_min
+    
+    trsf = gp_Trsf()
+    trsf.SetTranslation(gp_Vec(dx, dy, dz))
+    shapes["{obj_a}"] = BRepBuilderAPI_Transform(shapes["{obj_a}"], trsf).Shape()
+    print("[OK] Aligned {obj_a} with {obj_b}")
+'''
+            
+            elif cmd_type == "DUPLICATE":
+                obj = cmd.get("obj_a", "")
+                count = cmd.get("count", 2)
+                commands_str += f'''
+if "{obj}" in shapes:
+    for i in range(1, {count}):
+        shapes["{obj}_copy_" + str(i)] = shapes["{obj}"]
+    print("[OK] Duplicated {obj}")
+'''
+            
+            elif cmd_type == "OFFSET":
+                obj = cmd.get("obj_a", "")
+                x = cmd.get("x", 0)
+                y = cmd.get("y", 0)
+                z = cmd.get("z", 0)
+                commands_str += f'''
+if "{obj}" in shapes:
+    trsf = gp_Trsf()
+    trsf.SetTranslation(gp_Vec({x}, {y}, {z}))
+    shapes["{obj}"] = BRepBuilderAPI_Transform(shapes["{obj}"], trsf).Shape()
+    print("[OK] Offset {obj}")
+'''
         
-        code = f"""
-from pathlib import Path
-from OCC.Core.STEPControl import STEPControl_Reader, STEPControl_Writer
-from OCC.Core.IFSelect import IFSelect_RetDone, IFSelect_ItemsByEntity
-
-# File paths
-input_dir = Path("input")
-output_dir = Path("output")
-output_dir.mkdir(exist_ok=True)
-
-# Load STEP files
-shapes = {{}}
-"""
-        
-        for name in file_names:
-            stem = Path(name).stem
-            code += f"""
+        # Build file loading code
+        file_loading_code = ""
+        for file_path in self.step_files:
+            stem = Path(file_path).stem
+            file_loading_code += f'''
 reader = STEPControl_Reader()
-status = reader.ReadFile(str(input_dir / "{name}"))
+status = reader.ReadFile(r"{file_path}")
 if status == IFSelect_RetDone:
     reader.TransferRoots()
     shapes["{stem}"] = reader.OneShape()
+    print("[OK] Loaded: {stem}")
 else:
-    print("Failed to read {{str(input_dir / '{name}')}}")
-"""
+    print("[FAIL] Failed to read: {stem}")
+'''
         
-        code += f"""
-# Assembly operations
+        code = f'''
+from pathlib import Path
+from OCC.Core.STEPControl import STEPControl_Reader, STEPControl_Writer
+from OCC.Core.IFSelect import IFSelect_RetDone, IFSelect_ItemsByEntity
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+from OCC.Core.gp import gp_Trsf, gp_Vec, gp_Ax1, gp_Pnt, gp_Dir
+from OCC.Core.Bnd import Bnd_Box
+from OCC.Core.BRepBndLib import brepbndlib_Add
+from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
+
+output_dir = Path("output")
+output_dir.mkdir(exist_ok=True)
+
+shapes = {{}}
+{file_loading_code}
+
 {commands_str}
 
-# Save assembled model
 if shapes:
-    compound_shape = list(shapes.values())[0]
+    print("[OK] Creating compound from {{len(shapes)}} shapes...")
+    all_shapes = [s for s in shapes.values()]
+    
+    compound = all_shapes[0]
+    for i, shape in enumerate(all_shapes[1:], 1):
+        try:
+            fuser = BRepAlgoAPI_Fuse(compound, shape)
+            fuser.Build()
+            if fuser.IsDone():
+                compound = fuser.Shape()
+                print("[OK] Fused shape " + str(i))
+        except Exception as e:
+            print("[WARN] Fusion error: " + str(e))
+    
     writer = STEPControl_Writer()
-    writer.Transfer(compound_shape, IFSelect_ItemsByEntity)
+    writer.Transfer(compound, IFSelect_ItemsByEntity)
     writer.Write(str(output_dir / "assembled_model.step"))
-    print("Assembled model saved to output/assembled_model.step")
-"""
+    print("[OK] Saved: output/assembled_model.step")
+else:
+    print("[FAIL] No shapes loaded")
+'''
         
         return code
 

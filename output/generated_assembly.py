@@ -3,8 +3,7 @@ from pathlib import Path
 from OCC.Core.STEPControl import STEPControl_Reader, STEPControl_Writer
 from OCC.Core.IFSelect import IFSelect_RetDone, IFSelect_ItemsByEntity
 
-# File paths
-input_dir = Path("input")
+# Output directory
 output_dir = Path("output")
 output_dir.mkdir(exist_ok=True)
 
@@ -12,41 +11,25 @@ output_dir.mkdir(exist_ok=True)
 shapes = {}
 
 reader = STEPControl_Reader()
-status = reader.ReadFile(str(input_dir / "Rod-3.STEP"))
+status = reader.ReadFile(r"D:\Resume-grade-work\Ai-Cad-Assembly\test-files\input\Extruded Square.STEP")
 if status == IFSelect_RetDone:
     reader.TransferRoots()
-    shapes["Rod-3"] = reader.OneShape()
+    shapes["Extruded Square"] = reader.OneShape()
+    print("[OK] Loaded: Extruded Square")
 else:
-    print("Failed to read {str(input_dir / 'Rod-3.STEP')}")
+    print("[FAIL] Failed to read")
 
 reader = STEPControl_Reader()
-status = reader.ReadFile(str(input_dir / "Circular_Plate.step"))
+status = reader.ReadFile(r"D:\Resume-grade-work\Ai-Cad-Assembly\test-files\input\Square Hole.STEP")
 if status == IFSelect_RetDone:
     reader.TransferRoots()
-    shapes["Circular_Plate"] = reader.OneShape()
+    shapes["Square Hole"] = reader.OneShape()
+    print("[OK] Loaded: Square Hole")
 else:
-    print("Failed to read {str(input_dir / 'Circular_Plate.step')}")
+    print("[FAIL] Failed to read")
 
-reader = STEPControl_Reader()
-status = reader.ReadFile(str(input_dir / "Rod-1.STEP"))
-if status == IFSelect_RetDone:
-    reader.TransferRoots()
-    shapes["Rod-1"] = reader.OneShape()
-else:
-    print("Failed to read {str(input_dir / 'Rod-1.STEP')}")
-
-reader = STEPControl_Reader()
-status = reader.ReadFile(str(input_dir / "Rod-2.STEP"))
-if status == IFSelect_RetDone:
-    reader.TransferRoots()
-    shapes["Rod-2"] = reader.OneShape()
-else:
-    print("Failed to read {str(input_dir / 'Rod-2.STEP')}")
 
 # Assembly operations
-    # INSERT ROD-1 100.0mm into CIRCULAR_PLATE
-    # INSERT ROD-2 80.0mm into CIRCULAR_PLATE
-    # INSERT ROD-3 70.0mm into CIRCULAR_PLATE
 
 
 # Save assembled model
@@ -55,4 +38,6 @@ if shapes:
     writer = STEPControl_Writer()
     writer.Transfer(compound_shape, IFSelect_ItemsByEntity)
     writer.Write(str(output_dir / "assembled_model.step"))
-    print("Assembled model saved to output/assembled_model.step")
+    print("[OK] Assembled model saved to output/assembled_model.step")
+else:
+    print("[FAIL] No shapes to assemble")
